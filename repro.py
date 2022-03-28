@@ -11,13 +11,13 @@ from flax import linen as nn
 from flax.training import train_state
 from flax.linen.activation import tanh
 
-def get_datasets(n_tr, n_te):
+def get_datasets(key_scalar, n_tr, n_te):
     train_test = {}
     for split in {'train', 'test'}:
         data = datasets.MNIST('./data', train=split=='train', download=True)
 
         n = n_tr if split == 'train' else n_te
-        key = jax.random.PRNGKey(0)
+        key = jax.random.PRNGKey(key_scalar)
         rp = jax.random.permutation(key, len(data))[:n]
 
         X = jnp.full((n, 16, 16, 1), 0.0, dtype=jnp.float32)
@@ -121,7 +121,8 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir'   , '-o', type=str,   default='out/base', help="output directory for training logs")
     args = parser.parse_args()
     print(vars(args))
-    key = jax.random.PRNGKey(42)
+    key_scalar = 42
+    key = jax.random.PRNGKey(key_scalar)
     key, subkey = jax.random.split(key)
     
-    train(key, get_datasets(7291, 2007), 23, args.learning_rate)
+    train(key, get_datasets(key_scalar, 7291, 2007), 23, args.learning_rate)
