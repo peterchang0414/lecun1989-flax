@@ -24,9 +24,9 @@ def get_datasets(n_tr, n_te):
         Y = jnp.full((n, 10), -1.0, dtype=jnp.float32)
         for i, ix in enumerate(rp):
             I, yint = data[int(ix)]
-            xi = jnp.array(I, dtype=np.float32) / 127.5 - 1.0
+            xi = jnp.array(I, dtype=jnp.float32) / 127.5 - 1.0
             xi = jax.image.resize(xi, (16, 16), 'bilinear')
-            X = X.at[i].set(np.expand_dims(xi, axis=2))
+            X = X.at[i].set(jnp.expand_dims(xi, axis=2))
             Y = Y.at[i, yint].set(1.0)
         train_test[split] = (X, Y)
     return train_test
@@ -87,7 +87,7 @@ def train_step(state, X, Y):
 
 def train_one_epoch(state, X, Y):
     for step_num in range(X.shape[0]):
-        x, y = np.expand_dims(X[step_num], 0), np.expand_dims(Y[step_num], 0)
+        x, y = jnp.expand_dims(X[step_num], 0), jnp.expand_dims(Y[step_num], 0)
         state = train_step(state, x, y)
     return state
 
@@ -116,12 +116,12 @@ def eval_split(data, split, params):
     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Train a 2022 but mini ConvNet on digits")
-    parser.add_argument('--learning-rate', '-l', type=float, default=3e-4, help="Learning rate")
-    parser.add_argument('--output-dir'   , '-o', type=str,   default='out/modern', help="output directory for training logs")
+    parser = argparse.ArgumentParser(description="Train a 1989 LeCun ConvNet on digits")
+    parser.add_argument('--learning-rate', '-l', type=float, default=0.03, help="SGD learning rate")
+    parser.add_argument('--output-dir'   , '-o', type=str,   default='out/base', help="output directory for training logs")
     args = parser.parse_args()
     print(vars(args))
     key = jax.random.PRNGKey(42)
     key, subkey = jax.random.split(key)
     
-    train(key, get_datasets(7291, 2007), 23, learning_rate)
+    train(key, get_datasets(7291, 2007), 23, args.learning_rate)
