@@ -1,25 +1,26 @@
-# Adapted from https://github.com/karpathy/lecun1989-repro/blob/master/prepro.py
+# Backpropagation Applied to MNIST
+# Based on Lecun 1989: http://yann.lecun.com/exdb/publis/pdf/lecun-89e.pdf
+# Adapted to JAX from https://github.com/karpathy/lecun1989-repro/blob/master/prepro.py
+# Author: Peter G. Chang (@peterchang0414)
 import argparse
-from typing import Callable
-
 import jax
 import jax.numpy as jnp
-from jax import value_and_grad
-from torchvision import datasets
 import optax
+from typing import Callable
+from torchvision import datasets
+from jax import value_and_grad
 from flax import linen as nn
+from flax import serialization
 from flax.training import train_state
 from flax.linen.activation import tanh
 
-def get_datasets(key_scalar, n_tr, n_te):
+def get_datasets(key, n_tr, n_te):
     train_test = {}
     for split in {'train', 'test'}:
         data = datasets.MNIST('./data', train=split=='train', download=True)
-
         n = n_tr if split == 'train' else n_te
-        key = jax.random.PRNGKey(key_scalar)
+        key, _ = jax.random.split(key)
         rp = jax.random.permutation(key, len(data))[:n]
-
         X = jnp.full((n, 16, 16, 1), 0.0, dtype=jnp.float32)
         Y = jnp.full((n, 10), -1.0, dtype=jnp.float32)
         for i, ix in enumerate(rp):
@@ -33,21 +34,15 @@ def get_datasets(key_scalar, n_tr, n_te):
 
 class Net(nn.Module):
     bias_init: Callable = nn.initializers.zeros
-    kernel_init: Callable = nn.initializers.uniform()
+    # sqrt(6) = 2.449... used by he_uniform() approximates Karpathy's 2.4
+    kernel_init: Callable = nn.initializers.he_uniform()
 
     @nn.compact
     def __call__(self, x):
-        # For weight initialization, Karpathy used numerator of 2.4 
-        # which is very close to sqrt(6) = 2.449... used by he_uniform()
-        # By default, weight-sharing forces bias-sharing and therefore
-        # we add the bias separately.
-        bias1 = self.param('bias1', self.bias_init, (8, 8, 12))
-        bias2 = self.param('bias2', self.bias_init, (4, 4, 12))
-        bias3 = self.param('bias3', self.bias_init, (30,))
-        bias4 = self.param('bias4', nn.initializers.constant(-1.0), (10,))
         x = jnp.pad(x, [(0,0),(2,2),(2,2),(0,0)], constant_values=-1.0)
         x = nn.Conv(features=12, kernel_size=(5,5), strides=2, padding='VALID',
                     use_bias=False, kernel_init=self.kernel_init)(x)
+        bias1 = self.param('bias1', self.bias_init, (8, 8, 12))
         x = tanh(x + bias1)
         x = jnp.pad(x, [(0,0),(2,2),(2,2),(0,0)], constant_values=-1.0)
         x1, x2, x3 = (x[..., 0:8], x[..., 4:12], 
@@ -59,11 +54,14 @@ class Net(nn.Module):
         slice3 = nn.Conv(features=4, kernel_size=(5,5), strides=2, padding='VALID',
                          use_bias=False, kernel_init=self.kernel_init)(x3)
         x = jnp.concatenate((slice1, slice2, slice3), axis=-1)
+        bias2 = self.param('bias2', self.bias_init, (4, 4, 12))
         x = tanh(x + bias2)
         x = x.reshape((x.shape[0], -1))
         x = nn.Dense(features=30, use_bias=False)(x)
+        bias3 = self.param('bias3', self.bias_init, (30,))
         x = tanh(x + bias3)
         x = nn.Dense(features=10, use_bias=False)(x)
+        bias4 = self.param('bias4', nn.initializers.constant(-1.0), (10,))
         x = tanh(x + bias4)
         return x
 
@@ -100,6 +98,7 @@ def train(key, data, epochs, lr):
         train_state = train_one_epoch(train_state, Xtr, Ytr)
         for split in ['train', 'test']:
             eval_split(data, split, train_state.params)
+    return train_state
 
 @jax.jit
 def eval_step(params, X, Y):
@@ -121,8 +120,11 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir'   , '-o', type=str,   default='out/base', help="output directory for training logs")
     args = parser.parse_args()
     print(vars(args))
-    key_scalar = 42
-    key = jax.random.PRNGKey(key_scalar)
-    key, subkey = jax.random.split(key)
-    
-    train(key, get_datasets(key_scalar, 7291, 2007), 23, args.learning_rate)
+    key1, key2 = jax.random.split(jax.random.PRNGKey(42))
+    data = get_datasets(key1, 7291, 2007)
+    state = train(key2, data, 23, args.learning_rate)
+    bytes_output = serialization.to_bytes(state.params)
+    print(bytes_output)
+    f = open('output', 'wb')
+    f.write(bytes_output)
+    f.close()
