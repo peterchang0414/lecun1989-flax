@@ -123,8 +123,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(vars(args))
     key1, key2 = jax.random.split(jax.random.PRNGKey(42))
-    data = get_datasets(key1, 10, 10)
-    state = train(key2, data, 2, args.learning_rate)
+    data = get_datasets(key1, 7291, 2007)
+    state = train(key2, data, 23, args.learning_rate)
     bytes_output = serialization.to_bytes(state.params)
     os.makedirs(os.path.dirname(args.output_dir), exist_ok=True)
     with open(args.output_dir, 'wb') as f:
